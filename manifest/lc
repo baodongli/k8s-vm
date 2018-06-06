@@ -1,0 +1,10 @@
+set -x
+pods=($(kubectl get pod -o wide --all-namespaces | awk '{print $2,$1,$7}' | grep -e "^$1"))
+
+container=$2
+if [[ -z "$container" ]]; then
+    container=istio-proxy
+fi
+
+kubectl logs ${pods[0]} -n ${pods[1]} -c $container
+

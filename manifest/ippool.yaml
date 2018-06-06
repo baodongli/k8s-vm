@@ -1,0 +1,28 @@
+apiVersion: projectcalico.org/v3
+items:
+- apiVersion: projectcalico.org/v3
+  kind: IPPool
+  metadata:
+    creationTimestamp: 2018-05-24T15:22:15Z
+    name: default-ipv4-ippool
+    resourceVersion: "4"
+    uid: 3d8a3efa-5f66-11e8-a49f-fa163e80328e
+  spec:
+    cidr: 192.168.0.0/16
+    ipipMode: Never
+    natOutgoing: true
+    disabled: true
+- apiVersion: projectcalico.org/v3
+  kind: IPPool
+  metadata:
+    creationTimestamp: 2018-05-24T15:22:15Z
+    name: default-ipv6-ippool
+    resourceVersion: "5"
+    uid: 3d911d4d-5f66-11e8-a49f-fa163e80328e
+  spec:
+    cidr: fd80::/112
+    ipipMode: Never
+    natOutgoing: true
+kind: IPPoolList
+metadata:
+  resourceVersion: "295"

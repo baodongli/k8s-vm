@@ -1,0 +1,5 @@
+#./create_v6_cluster.sh v6-host-cluster.txt enp9s0 no-istio calico
+cluster host host-ctxt host-admin us ca fd80::/112
+master h-master 10.86.7.97 10.86.7.65 255.255.255.192
+minion h-minion1 10.86.7.105 10.86.7.65 255.255.255.192
+minion h-minion2 10.86.7.122 10.86.7.65 255.255.255.192
