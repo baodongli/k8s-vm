@@ -1,0 +1,4 @@
+#./create_v6_cluster.sh ds-cluster.txt enp9s0 no-istio calico
+cluster dualstack dualstack-ctxt dualstack-admin us ca fd60::/112
+master trial-master 192.168.122.10 192.168.122.1 fd80:1111::10 fd80:1111::1
+minion trial-minion 192.168.122.11 192.168.122.1 fd80:1111::11 fd80:1111::1

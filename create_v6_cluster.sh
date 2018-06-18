@@ -6,12 +6,12 @@ intf=$2
 deploy_istio=$3
 cni=$4
 
-if [[ -z $(sudo brctl show | grep kube-bridge) ]]; then
-    sudo brctl addbr kube-bridge
-    sudo ip link set kube-bridge up
-    sudo ip set link $intf up
-    sudo brctl addif kube-bridge $intf
-fi
+#if [[ -z $(sudo brctl show | grep kube-bridge) ]]; then
+#    sudo brctl addbr kube-bridge
+#    sudo ip link set kube-bridge up
+#    sudo ip set link $intf up
+#    sudo brctl addif kube-bridge $intf
+#fi
 
 
 function generate_mac ()  {
@@ -34,7 +34,11 @@ function customize_image {
     cp $vmdir/hostname $mntdir/etc/hostname
     cp $vmdir/interfaces $mntdir/etc/network/interfaces
 #    cp $rootdir/hosts.$CLUSTER_NAME $mntdir/etc/hosts
+    mkdir -p $mntdir/home/devuser/.ssh
     cp /root/.ssh/id_rsa.pub $mntdir/home/devuser/.ssh/authorized_keys
+# remove these two services that'd interfere with apt-get
+    rm $mntdir/lib/systemd/system/apt-daily.timer
+    rm $mntdir/lib/systemd/system/apt-daily.service
     guestunmount $mntdir
     rmdir $mntdir
 }
@@ -44,7 +48,8 @@ function create_vm {
     vm_name=$2
     vm_ipaddr=$3
     vm_gw_ip=$4
-    vm_ip_netmask=$5
+    vm_ipv6_addr=$5
+    vm_gw_ipv6=$6
 
     vmdir=$rootdir/$vm_name
     sudo rm -rf $vmdir
@@ -70,11 +75,16 @@ function create_vm {
         auto ens3
         iface ens3 inet static
             address $vm_ipaddr
-            netmask $vm_ip_netmask
+            netmask 24
             gateway $vm_gw_ip
             dns-nameservers 2001:4860:4860::8888
             dns-search cisco.com
         
+        iface ens3 inet6 static
+            address $vm_ipv6_addr
+            netmask 64
+            gateway $vm_gw_ipv6
+
         # Source interfaces
         # Please check /etc/network/interfaces.d before changing this file
         # as interfaces may have been defined in /etc/network/interfaces.d
@@ -131,7 +141,7 @@ EOF
             <controller type='pci' index='0' model='pci-root'/>
             <interface type='bridge'>
               <mac address='$mac_addr'/>
-              <source bridge='kube-bridge'/>
+              <source bridge='virbr0'/>
               <target dev='${vm_name}'/>
               <model type='virtio'/>
               <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>
@@ -205,31 +215,43 @@ while read -r vm; do
     fi
 done < $hostfile
 
-function wait_get_vm_ipv6_addr {
+function configure_node {
     vm_ip=$1
     vm_name=$2
     
-    timeout 120 sh -c "while ! ping -W 1 -c 1 $vm_ip >> /dev/null; do
-        sleep 1
-    done"
-
-    while ! ssh -n -o "StrictHostKeyChecking no" devuser@$vm_ip ls >> /dev/null; do
-        sleep 3
-    done
-
     ssh_cmd="ssh -n devuser@$vm_ip"
     
-    vm_ipv6_addr=
-    while [[ -z $vm_ipv6_addr ]]; do
-        vm_ipv6_addr=$($ssh_cmd ip a show ens3 | grep inet6 | grep global | awk '{print $2}')
-        sleep 3
-    done
-
-    $ssh_cmd sudo sysctl -w net.ipv6.conf.ens3.accept_ra=2
+    $ssh_cmd sudo sysctl -w net.ipv6.conf.ens3.accept_ra=0
     $ssh_cmd sudo sysctl -w net.ipv6.conf.all.forwarding=1
     $ssh_cmd sudo sysctl -w net.ipv6.conf.all.accept_ra=2
+    #$ssh_cmd sudo systemctl stop apt-daily.service
+    #$ssh_cmd sudo systemctl stop apt-daily.timer
+    #$ssh_cmd sudo systemctl disable apt-daily.service
+    #$ssh_cmd sudo systemctl disable apt-daily.timer
 
-    V6_ADDR=${vm_ipv6_addr%\/*}
+    #install docker and kubernetes
+    while ! $ssh_cmd sudo apt-get update; do
+        sleep 10
+    done
+
+    $ssh_cmd "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -"
+    $ssh_cmd "sudo add-apt-repository 'deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable'"
+    $ssh_cmd sudo apt-cache policy docker.io
+
+    while ! $ssh_cmd sudo apt-get install -y apt-transport-https; do
+        sleep 10
+    done
+
+    $ssh_cmd "curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -"
+    $ssh_cmd "sudo add-apt-repository 'deb http://apt.kubernetes.io/ kubernetes-xenial main'"
+
+    while ! $ssh_cmd sudo apt-get update; do
+        sleep 10
+    done
+
+    while ! $ssh_cmd sudo apt-get install -y docker.io kubelet=1.10-3-00 kubeadm=1.10.3-00 kubectl=1.10.3-00 kubernetes-cni=0.6.0-00; do
+        sleep 10
+    done
 }
 
 rm -f $rootdir/hosts.$CLUSTER_NAME
@@ -243,13 +265,14 @@ while read -r vm; do
     vm_params=($vm)
     vm_name=${vm_params[1]}
     vm_ipaddr=${vm_params[2]}
+    vm_ipv6_addr=${vm_params[4]}
     
     if [[ ${vm_params[0]} == 'cluster' ]]; then
         continue
     fi
     echo "Waiting for $vm_name to come up"
-    wait_get_vm_ipv6_addr $vm_ipaddr $vm_name
-    echo $V6_ADDR $vm_name >> $rootdir/hosts.$CLUSTER_NAME
+    configure_node $vm_ipaddr $vm_name
+    echo $vm_ipv6_addr $vm_name >> $rootdir/hosts.$CLUSTER_NAME
 done < $hostfile
 
 
@@ -307,29 +330,15 @@ function kubeadm_init_master {
     cat > $vmdir/kubeadm.conf <<-EOF
         api:
           advertiseAddress: $master_ipv6_addr
+        kubeProxy:
+          config:
+            bindAddress: "::"
         networking:
           serviceSubnet: fd00:100::/112
           podSubnet: $CLUSTER_POD_CIDR
         nodeName: $master_name
 EOF
 
-    while ! $ssh_cmd sudo apt-get update; do
-        sleep 10
-    done
-
-    while ! $ssh_cmd sudo apt-get install -y apt-transport-https; do
-        sleep 10
-    done
-
-    $ssh_cmd "curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -"
-
-    while ! $ssh_cmd sudo apt-get update; do
-        sleep 10
-    done
-
-    while ! $ssh_cmd sudo apt-get install -y kubelet kubeadm kubectl kubernetes-cni; do
-        sleep 10
-    done
 
     $ssh_cmd sudo sed -i "s/10.96.0.10/fd00:100::a/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
     $ssh_cmd sudo systemctl daemon-reload
@@ -383,25 +392,6 @@ function kubeadm_join_minion {
 
     scp $rootdir/hosts.$CLUSTER_NAME devuser@$minion_ip:/home/devuser/hosts
     $ssh_cmd sudo cp /home/devuser/hosts /etc/hosts
-
-    while ! $ssh_cmd sudo apt-get update; do
-        sleep 10
-    done
-
-    while ! $ssh_cmd sudo apt-get install -y apt-transport-https; do
-        sleep 10
-    done
-
-    $ssh_cmd "curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -"
-
-    while ! $ssh_cmd sudo apt-get update; do
-        sleep 10
-    done
-
- 
-    while ! $ssh_cmd sudo apt-get install -y kubelet kubeadm kubectl kubernetes-cni; do
-        sleep 10
-    done
 
     $ssh_cmd sudo sed -i "s/10.96.0.10/fd00:100::a/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
     $ssh_cmd sudo systemctl daemon-reload
@@ -524,7 +514,7 @@ while read -r vm; do
     scp $rootdir/del-bridge.sh devuser@$vm_ipaddr:/home/devuser/
     scp $rootdir/map_ns.sh devuser@$vm_ipaddr:/home/devuser/
     scp $rootdir/unmap_ns.sh devuser@$vm_ipaddr:/home/devuser/
-    $ssh_cmd /home/devuser/add-bridge.sh
+    # $ssh_cmd /home/devuser/add-bridge.sh
 done < $hostfile
 
 if [[ $deploy_istio == 'istio' ]]; then

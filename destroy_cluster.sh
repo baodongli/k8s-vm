@@ -14,7 +14,9 @@ while read -r vm; do
 
     virsh shutdown $vm_name
     virsh undefine $vm_name
-    rm -rf $rootdir/$vm_name
+    if [[ $? == 0 && -n $vm_name ]]; then
+        rm -rf $rootdir/$vm_name
+    fi
     timeout 60 sh -c "while virsh list --all | grep $vm_name > /dev/null; do
         sleep 1
     done"
