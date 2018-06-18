@@ -52,7 +52,10 @@ function create_vm {
     vm_gw_ipv6=$6
 
     vmdir=$rootdir/$vm_name
-    sudo rm -rf $vmdir
+    if [[ -n $vm_name ]]; then
+        sudo rm -rf $vmdir
+    fi
+
     mkdir -p $vmdir
     sudo cp $rootdir/cluster.qcow2 $vmdir/$vm_name.qcow2
     echo $vm_name > $vmdir/hostname
@@ -62,6 +65,13 @@ function create_vm {
     else
         mac_addr=$(generate_mac)
         echo $mac_addr > $rootdir/$vm_name.mac
+    fi
+
+    if [[ -f $rootdir/${vm_name}1.mac ]]; then
+        mac_addr1=$(cat $rootdir/${vm_name}1.mac)
+    else
+        mac_addr1=$(generate_mac)
+        echo $mac_addr1 > $rootdir/${vm_name}1.mac
     fi
 
     cat > $vmdir/interfaces <<-EOF
@@ -146,6 +156,13 @@ EOF
               <model type='virtio'/>
               <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>
             </interface>
+            <interface type='bridge'>
+              <mac address='$mac_addr1'/>
+              <source bridge='kube-bridge'/>
+              <target dev='${vm_name}1'/>
+              <model type='virtio'/>
+              <address type='pci' domain='0x0000' bus='0x00' slot='0x06' function='0x0'/>
+            </interface>
             <serial type='pty'>
               <target port='1'/>
             </serial>
@@ -206,10 +223,13 @@ while read -r vm; do
     if [[ $vm_type == 'master' ]]; then
         master_vm_name=$vm_name
         master_vm_ipaddr=$vm_ipaddr
+        master_ipv6_addr=${vm_params[4]}
     fi
 
     if [[ -n $vm_name && -n vm_ipaddr ]]; then
         create_vm $vm
+	vmdir=$rootdir/$vm_name
+        echo ${vm_params[6]} ${vm_params[7]} > $rootdir/$vm_name/intf2.txt
     else
         echo "Can't create vm without name or IP"
     fi
@@ -218,9 +238,21 @@ done < $hostfile
 function configure_node {
     vm_ip=$1
     vm_name=$2
-    
+
+    timeout 120 sh -c "while ! ping -W 1 -c 1 $vm_ip >> /dev/null; do
+        sleep 1
+    done"
+
+    while ! ssh -n -o "StrictHostKeyChecking no" devuser@$vm_ip ls >> /dev/null; do
+        sleep 3
+    done
+
     ssh_cmd="ssh -n devuser@$vm_ip"
     
+    scp $rootdir/$vm_name/intf2.txt devuser@$vm_ip:/home/devuser/intf2.txt
+    scp $rootdir/hosts.$CLUSTER_NAME devuser@$vm_ip:/home/devuser/hosts
+    $ssh_cmd sudo cp /home/devuser/hosts /etc/hosts
+
     $ssh_cmd sudo sysctl -w net.ipv6.conf.ens3.accept_ra=0
     $ssh_cmd sudo sysctl -w net.ipv6.conf.all.forwarding=1
     $ssh_cmd sudo sysctl -w net.ipv6.conf.all.accept_ra=2
@@ -249,7 +281,7 @@ function configure_node {
         sleep 10
     done
 
-    while ! $ssh_cmd sudo apt-get install -y docker.io kubelet=1.10-3-00 kubeadm=1.10.3-00 kubectl=1.10.3-00 kubernetes-cni=0.6.0-00; do
+    while ! $ssh_cmd sudo apt-get install -y docker.io kubelet kubeadm kubectl kubernetes-cni; do
         sleep 10
     done
 }
@@ -271,8 +303,9 @@ while read -r vm; do
         continue
     fi
     echo "Waiting for $vm_name to come up"
-    configure_node $vm_ipaddr $vm_name
     echo $vm_ipv6_addr $vm_name >> $rootdir/hosts.$CLUSTER_NAME
+    # echo $vm_ipaddr $vm_name >> $rootdir/hosts.$CLUSTER_NAME
+    configure_node $vm_ipaddr $vm_name
 done < $hostfile
 
 
@@ -321,11 +354,6 @@ function kubeadm_init_master {
     ssh_cmd="ssh -n devuser@$master_ip"
     vmdir=$rootdir/$master_name
     
-    wait_get_vm_ipv6_addr $master_ip $master_name
-    master_ipv6_addr=${V6_ADDR%\/*}
-
-    scp $rootdir/hosts.$CLUSTER_NAME devuser@$master_ip:/home/devuser/hosts
-    $ssh_cmd sudo cp /home/devuser/hosts /etc/hosts
 
     cat > $vmdir/kubeadm.conf <<-EOF
         api:
@@ -389,9 +417,6 @@ function kubeadm_join_minion {
     minion_ip=$2
 
     ssh_cmd="ssh -n devuser@$minion_ip"
-
-    scp $rootdir/hosts.$CLUSTER_NAME devuser@$minion_ip:/home/devuser/hosts
-    $ssh_cmd sudo cp /home/devuser/hosts /etc/hosts
 
     $ssh_cmd sudo sed -i "s/10.96.0.10/fd00:100::a/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
     $ssh_cmd sudo systemctl daemon-reload
@@ -506,8 +531,8 @@ while read -r vm; do
     ssh_cmd="ssh -n devuser@$vm_ipaddr"
     if [[ $vm_type == 'master' ]]; then
         $ssh_cmd "/home/devuser/manifest/calicoctl get ippool -o yaml > /home/devuser/manifest/ippool.yaml"
-        $ssh_cmd sed -i "/natOutgoing:/a \    disabled: true" /home/devuser/manifest/ippool.yaml
-        $ssh_cmd sed -i "/IPPoolList/i \    natOutgoing: true" /home/devuser/manifest/ippool.yaml
+        $ssh_cmd "sed -i '/natOutgoing:/a \    disabled: true' /home/devuser/manifest/ippool.yaml"
+        $ssh_cmd "sed -i '/IPPoolList/i \    natOutgoing: true' /home/devuser/manifest/ippool.yaml"
         $ssh_cmd /home/devuser/manifest/calicoctl apply -f /home/devuser/manifest/ippool.yaml
     fi
     scp $rootdir/add-bridge.sh devuser@$vm_ipaddr:/home/devuser/

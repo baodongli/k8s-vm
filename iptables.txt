@@ -1,0 +1,16 @@
+#sudo ip6tables -t nat -A POSTROUTING -s fd80:1111::/64 ! -d fd80:1111::/64 -p tcp -j MASQUERADE --to-ports 1024-65535
+#sudo ip6tables -t nat -A POSTROUTING -s fd80:1111::/64 ! -d fd80:1111::/64 -p udp -j MASQUERADE --to-ports 1024-65535
+#sudo ip6tables -t nat -A POSTROUTING -s fd80:1111::/64 ! -d fd80:1111::/64 -j MASQUERADE
+#sudo ip6tables -t nat -A POSTROUTING -s fd80:1111::/64 ! -d fd80:1111::/64 -j LOG --log-prefix 'HIT THIS RULE'
+
+#sudo ip6tables -t filter -A INPUT -i virbr0 -p udp -m udp --dport 53 -j ACCEPT
+#sudo ip6tables -t filter -A INPUT -i virbr0 -p tcp -m tcp --dport 53 -j ACCEPT
+#sudo ip6tables -t filter -A INPUT -i virbr0 -p udp -m udp --dport 67 -j ACCEPT
+#sudo ip6tables -t filter -A INPUT -i virbr0 -p tcp -m tcp --dport 67 -j ACCEPT
+#sudo ip6tables -t filter -A FORWARD -d fd80:1111::0/64 -o virbr0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+#sudo ip6tables -t filter -A FORWARD -s fd80:1111::0/64 -i virbr0 -j ACCEPT
+#sudo ip6tables -t filter -A FORWARD -i virbr0 -o virbr0 -j ACCEPT
+#sudo ip6tables -t filter -A FORWARD -o virbr0 -j REJECT --reject-with icmp6-port-unreachable
+#sudo ip6tables -t filter -A FORWARD -i virbr0 -j REJECT --reject-with icmp6-port-unreachable
+#sudo ip6tables -t filter -A OUTPUT -o virbr0 -p udp -m udp --dport 68 -j ACCEPT
+
