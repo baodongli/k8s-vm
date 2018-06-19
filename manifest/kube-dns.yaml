@@ -1,0 +1,8 @@
+apiVersion: v1
+data:
+  upstreamNameservers: |
+    ["2001:420:2c50:2021:23a:7dff:fe69:f67c"]
+kind: ConfigMap
+metadata:
+  name: kube-dns
+  namespace: kube-system

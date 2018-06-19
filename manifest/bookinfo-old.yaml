@@ -39,7 +39,7 @@ spec:
   template:
     metadata:
       annotations:
-        sidecar.istio.io/status: '{"version":"55c9e544b52e1d4e45d18a58d0b34ba4b72531e45fb6d1572c77191422556ffc","initContainers":["istio-init"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"],"imagePullSecrets":null}'
+        sidecar.istio.io/status: '{"version":"3bca50c11810f552511ce2778ef54b0ed25e5a89b79736bb3dd68fb59b3a5ef5","initContainers":["istio-init","enable-core-dump"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"]}'
       creationTimestamp: null
       labels:
         app: details
@@ -47,7 +47,7 @@ spec:
     spec:
       containers:
       - image: istio/examples-bookinfo-details-v1:1.5.0
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         name: details
         ports:
         - containerPort: 9080
@@ -66,9 +66,9 @@ spec:
         - --parentShutdownDuration
         - 1m0s
         - --discoveryAddress
-        - istio-pilot.istio-system:15007
+        - istio-pilot.istio-system:8080
         - --discoveryRefreshDelay
-        - 10s
+        - 1s
         - --zipkinAddress
         - zipkin.istio-system:9411
         - --connectTimeout
@@ -92,19 +92,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
-        - name: ISTIO_META_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: ISTIO_META_INTERCEPTION_MODE
-          value: REDIRECT
-        image: docker.io/baodongli/proxyv2:v6-ingress
-        imagePullPolicy: IfNotPresent
+        image: docker.io/baodongli/proxy_debug:ingress
+        imagePullPolicy: Always
         name: istio-proxy
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
+        resources: {}
         securityContext:
           privileged: false
           readOnlyRootFilesystem: true
@@ -121,17 +112,11 @@ spec:
         - "15001"
         - -u
         - "1337"
-        - -m
-        - REDIRECT
         - -i
         - '*'
-        - -x
-        - ""
         - -b
-        - 9080,
-        - -d
-        - ""
-        image: docker.io/baodongli/proxy_init:v6-ingress
+        - '*'
+        image: docker.io/baodongli/proxy_init:master
         imagePullPolicy: IfNotPresent
         name: istio-init
         resources: {}
@@ -139,6 +124,17 @@ spec:
           capabilities:
             add:
             - NET_ADMIN
+      - args:
+        - -c
+        - sysctl -w kernel.core_pattern=/etc/istio/proxy/core.%e.%p.%t && ulimit -c
+          unlimited
+        command:
+        - /bin/sh
+        image: alpine
+        imagePullPolicy: IfNotPresent
+        name: enable-core-dump
+        resources: {}
+        securityContext:
           privileged: true
       volumes:
       - emptyDir:
@@ -177,7 +173,7 @@ spec:
   template:
     metadata:
       annotations:
-        sidecar.istio.io/status: '{"version":"55c9e544b52e1d4e45d18a58d0b34ba4b72531e45fb6d1572c77191422556ffc","initContainers":["istio-init"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"],"imagePullSecrets":null}'
+        sidecar.istio.io/status: '{"version":"3bca50c11810f552511ce2778ef54b0ed25e5a89b79736bb3dd68fb59b3a5ef5","initContainers":["istio-init","enable-core-dump"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"]}'
       creationTimestamp: null
       labels:
         app: ratings
@@ -185,7 +181,7 @@ spec:
     spec:
       containers:
       - image: istio/examples-bookinfo-ratings-v1:1.5.0
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         name: ratings
         ports:
         - containerPort: 9080
@@ -204,9 +200,9 @@ spec:
         - --parentShutdownDuration
         - 1m0s
         - --discoveryAddress
-        - istio-pilot.istio-system:15007
+        - istio-pilot.istio-system:8080
         - --discoveryRefreshDelay
-        - 10s
+        - 1s
         - --zipkinAddress
         - zipkin.istio-system:9411
         - --connectTimeout
@@ -230,19 +226,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
-        - name: ISTIO_META_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: ISTIO_META_INTERCEPTION_MODE
-          value: REDIRECT
-        image: docker.io/baodongli/proxyv2:v6-ingress
-        imagePullPolicy: IfNotPresent
+        image: docker.io/baodongli/proxy_debug:ingress
+        imagePullPolicy: Always
         name: istio-proxy
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
+        resources: {}
         securityContext:
           privileged: false
           readOnlyRootFilesystem: true
@@ -259,17 +246,11 @@ spec:
         - "15001"
         - -u
         - "1337"
-        - -m
-        - REDIRECT
         - -i
         - '*'
-        - -x
-        - ""
         - -b
-        - 9080,
-        - -d
-        - ""
-        image: docker.io/baodongli/proxy_init:v6-ingress
+        - '*'
+        image: docker.io/baodongli/proxy_init:master
         imagePullPolicy: IfNotPresent
         name: istio-init
         resources: {}
@@ -277,6 +258,17 @@ spec:
           capabilities:
             add:
             - NET_ADMIN
+      - args:
+        - -c
+        - sysctl -w kernel.core_pattern=/etc/istio/proxy/core.%e.%p.%t && ulimit -c
+          unlimited
+        command:
+        - /bin/sh
+        image: alpine
+        imagePullPolicy: IfNotPresent
+        name: enable-core-dump
+        resources: {}
+        securityContext:
           privileged: true
       volumes:
       - emptyDir:
@@ -315,7 +307,7 @@ spec:
   template:
     metadata:
       annotations:
-        sidecar.istio.io/status: '{"version":"55c9e544b52e1d4e45d18a58d0b34ba4b72531e45fb6d1572c77191422556ffc","initContainers":["istio-init"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"],"imagePullSecrets":null}'
+        sidecar.istio.io/status: '{"version":"3bca50c11810f552511ce2778ef54b0ed25e5a89b79736bb3dd68fb59b3a5ef5","initContainers":["istio-init","enable-core-dump"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"]}'
       creationTimestamp: null
       labels:
         app: reviews
@@ -323,7 +315,7 @@ spec:
     spec:
       containers:
       - image: istio/examples-bookinfo-reviews-v1:1.5.0
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         name: reviews
         ports:
         - containerPort: 9080
@@ -342,9 +334,9 @@ spec:
         - --parentShutdownDuration
         - 1m0s
         - --discoveryAddress
-        - istio-pilot.istio-system:15007
+        - istio-pilot.istio-system:8080
         - --discoveryRefreshDelay
-        - 10s
+        - 1s
         - --zipkinAddress
         - zipkin.istio-system:9411
         - --connectTimeout
@@ -368,19 +360,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
-        - name: ISTIO_META_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: ISTIO_META_INTERCEPTION_MODE
-          value: REDIRECT
-        image: docker.io/baodongli/proxyv2:v6-ingress
-        imagePullPolicy: IfNotPresent
+        image: docker.io/baodongli/proxy_debug:ingress
+        imagePullPolicy: Always
         name: istio-proxy
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
+        resources: {}
         securityContext:
           privileged: false
           readOnlyRootFilesystem: true
@@ -397,17 +380,11 @@ spec:
         - "15001"
         - -u
         - "1337"
-        - -m
-        - REDIRECT
         - -i
         - '*'
-        - -x
-        - ""
         - -b
-        - 9080,
-        - -d
-        - ""
-        image: docker.io/baodongli/proxy_init:v6-ingress
+        - '*'
+        image: docker.io/baodongli/proxy_init:master
         imagePullPolicy: IfNotPresent
         name: istio-init
         resources: {}
@@ -415,6 +392,17 @@ spec:
           capabilities:
             add:
             - NET_ADMIN
+      - args:
+        - -c
+        - sysctl -w kernel.core_pattern=/etc/istio/proxy/core.%e.%p.%t && ulimit -c
+          unlimited
+        command:
+        - /bin/sh
+        image: alpine
+        imagePullPolicy: IfNotPresent
+        name: enable-core-dump
+        resources: {}
+        securityContext:
           privileged: true
       volumes:
       - emptyDir:
@@ -437,7 +425,7 @@ spec:
   template:
     metadata:
       annotations:
-        sidecar.istio.io/status: '{"version":"55c9e544b52e1d4e45d18a58d0b34ba4b72531e45fb6d1572c77191422556ffc","initContainers":["istio-init"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"],"imagePullSecrets":null}'
+        sidecar.istio.io/status: '{"version":"3bca50c11810f552511ce2778ef54b0ed25e5a89b79736bb3dd68fb59b3a5ef5","initContainers":["istio-init","enable-core-dump"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"]}'
       creationTimestamp: null
       labels:
         app: reviews
@@ -464,9 +452,9 @@ spec:
         - --parentShutdownDuration
         - 1m0s
         - --discoveryAddress
-        - istio-pilot.istio-system:15007
+        - istio-pilot.istio-system:8080
         - --discoveryRefreshDelay
-        - 10s
+        - 1s
         - --zipkinAddress
         - zipkin.istio-system:9411
         - --connectTimeout
@@ -490,19 +478,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
-        - name: ISTIO_META_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: ISTIO_META_INTERCEPTION_MODE
-          value: REDIRECT
-        image: docker.io/baodongli/proxyv2:v6-ingress
-        imagePullPolicy: IfNotPresent
+        image: docker.io/baodongli/proxy_debug:ingress
+        imagePullPolicy: Always
         name: istio-proxy
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
+        resources: {}
         securityContext:
           privileged: false
           readOnlyRootFilesystem: true
@@ -519,17 +498,11 @@ spec:
         - "15001"
         - -u
         - "1337"
-        - -m
-        - REDIRECT
         - -i
         - '*'
-        - -x
-        - ""
         - -b
-        - 9080,
-        - -d
-        - ""
-        image: docker.io/baodongli/proxy_init:v6-ingress
+        - '*'
+        image: docker.io/baodongli/proxy_init:master
         imagePullPolicy: IfNotPresent
         name: istio-init
         resources: {}
@@ -537,6 +510,17 @@ spec:
           capabilities:
             add:
             - NET_ADMIN
+      - args:
+        - -c
+        - sysctl -w kernel.core_pattern=/etc/istio/proxy/core.%e.%p.%t && ulimit -c
+          unlimited
+        command:
+        - /bin/sh
+        image: alpine
+        imagePullPolicy: IfNotPresent
+        name: enable-core-dump
+        resources: {}
+        securityContext:
           privileged: true
       volumes:
       - emptyDir:
@@ -559,7 +543,7 @@ spec:
   template:
     metadata:
       annotations:
-        sidecar.istio.io/status: '{"version":"55c9e544b52e1d4e45d18a58d0b34ba4b72531e45fb6d1572c77191422556ffc","initContainers":["istio-init"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"],"imagePullSecrets":null}'
+        sidecar.istio.io/status: '{"version":"3bca50c11810f552511ce2778ef54b0ed25e5a89b79736bb3dd68fb59b3a5ef5","initContainers":["istio-init","enable-core-dump"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"]}'
       creationTimestamp: null
       labels:
         app: reviews
@@ -586,9 +570,9 @@ spec:
         - --parentShutdownDuration
         - 1m0s
         - --discoveryAddress
-        - istio-pilot.istio-system:15007
+        - istio-pilot.istio-system:8080
         - --discoveryRefreshDelay
-        - 10s
+        - 1s
         - --zipkinAddress
         - zipkin.istio-system:9411
         - --connectTimeout
@@ -612,19 +596,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
-        - name: ISTIO_META_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: ISTIO_META_INTERCEPTION_MODE
-          value: REDIRECT
-        image: docker.io/baodongli/proxyv2:v6-ingress
-        imagePullPolicy: IfNotPresent
+        image: docker.io/baodongli/proxy_debug:ingress
+        imagePullPolicy: Always
         name: istio-proxy
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
+        resources: {}
         securityContext:
           privileged: false
           readOnlyRootFilesystem: true
@@ -641,17 +616,11 @@ spec:
         - "15001"
         - -u
         - "1337"
-        - -m
-        - REDIRECT
         - -i
         - '*'
-        - -x
-        - ""
         - -b
-        - 9080,
-        - -d
-        - ""
-        image: docker.io/baodongli/proxy_init:v6-ingress
+        - '*'
+        image: docker.io/baodongli/proxy_init:master
         imagePullPolicy: IfNotPresent
         name: istio-init
         resources: {}
@@ -659,6 +628,17 @@ spec:
           capabilities:
             add:
             - NET_ADMIN
+      - args:
+        - -c
+        - sysctl -w kernel.core_pattern=/etc/istio/proxy/core.%e.%p.%t && ulimit -c
+          unlimited
+        command:
+        - /bin/sh
+        image: alpine
+        imagePullPolicy: IfNotPresent
+        name: enable-core-dump
+        resources: {}
+        securityContext:
           privileged: true
       volumes:
       - emptyDir:
@@ -697,7 +677,7 @@ spec:
   template:
     metadata:
       annotations:
-        sidecar.istio.io/status: '{"version":"55c9e544b52e1d4e45d18a58d0b34ba4b72531e45fb6d1572c77191422556ffc","initContainers":["istio-init"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"],"imagePullSecrets":null}'
+        sidecar.istio.io/status: '{"version":"3bca50c11810f552511ce2778ef54b0ed25e5a89b79736bb3dd68fb59b3a5ef5","initContainers":["istio-init","enable-core-dump"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"]}'
       creationTimestamp: null
       labels:
         app: productpage
@@ -711,7 +691,7 @@ spec:
         command:
         - /bin/sh
         image: istio/examples-bookinfo-productpage-v1:1.5.0
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         name: productpage
         ports:
         - containerPort: 9080
@@ -730,9 +710,9 @@ spec:
         - --parentShutdownDuration
         - 1m0s
         - --discoveryAddress
-        - istio-pilot.istio-system:15007
+        - istio-pilot.istio-system:8080
         - --discoveryRefreshDelay
-        - 10s
+        - 1s
         - --zipkinAddress
         - zipkin.istio-system:9411
         - --connectTimeout
@@ -756,19 +736,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
-        - name: ISTIO_META_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: ISTIO_META_INTERCEPTION_MODE
-          value: REDIRECT
-        image: docker.io/baodongli/proxyv2:v6-ingress
-        imagePullPolicy: IfNotPresent
+        image: docker.io/baodongli/proxy_debug:ingress
+        imagePullPolicy: Always
         name: istio-proxy
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
+        resources: {}
         securityContext:
           privileged: false
           readOnlyRootFilesystem: true
@@ -785,17 +756,11 @@ spec:
         - "15001"
         - -u
         - "1337"
-        - -m
-        - REDIRECT
         - -i
         - '*'
-        - -x
-        - ""
         - -b
-        - 9080,
-        - -d
-        - ""
-        image: docker.io/baodongli/proxy_init:v6-ingress
+        - '*'
+        image: docker.io/baodongli/proxy_init:master
         imagePullPolicy: IfNotPresent
         name: istio-init
         resources: {}
@@ -803,6 +768,17 @@ spec:
           capabilities:
             add:
             - NET_ADMIN
+      - args:
+        - -c
+        - sysctl -w kernel.core_pattern=/etc/istio/proxy/core.%e.%p.%t && ulimit -c
+          unlimited
+        command:
+        - /bin/sh
+        image: alpine
+        imagePullPolicy: IfNotPresent
+        name: enable-core-dump
+        resources: {}
+        securityContext:
           privileged: true
       volumes:
       - emptyDir:
@@ -813,4 +789,34 @@ spec:
           optional: true
           secretName: istio.default
 status: {}
+---
+###########################################################################
+# Ingress resource (gateway)
+##########################################################################
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: gateway
+  annotations:
+    kubernetes.io/ingress.class: "istio"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /productpage
+        backend:
+          serviceName: productpage
+          servicePort: 9080
+      - path: /login
+        backend:
+          serviceName: productpage
+          servicePort: 9080
+      - path: /logout
+        backend:
+          serviceName: productpage
+          servicePort: 9080
+      - path: /api/v1/products.*
+        backend:
+          serviceName: productpage
+          servicePort: 9080
 ---

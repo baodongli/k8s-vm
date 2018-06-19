@@ -204,6 +204,8 @@ while read -r line; do
         CLUSTER_REGION=${params[4]}
         CLUSTER_ZONE=${params[5]}
         CLUSTER_POD_CIDR=${params[6]}
+        NODE_CIDR=${params[7]}
+        SERVICE_CIDR=${params[8]}
         break
     fi
 done < $hostfile
@@ -229,7 +231,7 @@ while read -r vm; do
     if [[ -n $vm_name && -n vm_ipaddr ]]; then
         create_vm $vm
 	vmdir=$rootdir/$vm_name
-        echo ${vm_params[6]} ${vm_params[7]} > $rootdir/$vm_name/intf2.txt
+        echo ${vm_params[6]} ${vm_params[7]} $CLUSTER_POD_CIDR $NODE_CIDR $SERVICE_CIDR > $rootdir/$vm_name/intf2.txt
     else
         echo "Can't create vm without name or IP"
     fi
@@ -362,13 +364,14 @@ function kubeadm_init_master {
           config:
             bindAddress: "::"
         networking:
-          serviceSubnet: fd00:100::/112
+          serviceSubnet: $SERVICE_CIDR
           podSubnet: $CLUSTER_POD_CIDR
         nodeName: $master_name
 EOF
 
 
-    $ssh_cmd sudo sed -i "s/10.96.0.10/fd00:100::a/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+    cidr=${SERVICE_CIDR%/*}
+    $ssh_cmd sudo sed -i "s/10.96.0.10/${cidr}::a/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
     $ssh_cmd sudo systemctl daemon-reload
     #$ssh_cmd sudo systemctl restart kubelet.service
 
@@ -418,7 +421,8 @@ function kubeadm_join_minion {
 
     ssh_cmd="ssh -n devuser@$minion_ip"
 
-    $ssh_cmd sudo sed -i "s/10.96.0.10/fd00:100::a/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+    cidr=${SERVICE_CIDR%/*}
+    $ssh_cmd sudo sed -i "s/10.96.0.10/${cidr}::a/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
     $ssh_cmd sudo systemctl daemon-reload
     #$ssh_cmd sudo systemctl restart kubelet.service
 
@@ -494,6 +498,21 @@ function deploy_bookinfo {
     echo "Now you can ssh devuser@$master_ip, and launch firefox with http://localhost:3000/dashboard/db/istio-dashboard"
 }
 
+function deploy_jool {
+    vm_name=$1
+    vm_ipaddr=$2
+    ssh_cmd="ssh -n devuser@$vm_ipaddr"
+    $ssh_cmd 'sudo apt-get install -y build-essential linux-headers-$(uname -r) dkms'
+    $ssh_cmd 'sudo sh -c "cd /opt; git clone https://github.com/NICMx/Jool.git; dkms install Jool"'
+    $ssh_cmd sudo apt-get install -y gcc make pkg-config libnl-genl-3-dev autoconf automake
+    $ssh_cmd 'sudo sh -c "cd /opt/Jool/usr; ./autogen.sh; ./configure; make; make install"'
+    $ssh_cmd sudo /sbin/modprobe jool pool6=64:ff9b::/96 disabled
+    $ssh_cmd sudo jool -4 --add --mark 67108864 $vm_ipaddr 61000-65535
+    $ssh_cmd sudo jool --enable
+    $ssh_cmd sudo jool -d
+    $ssh_cmd sudo jool -4 -d
+}
+
 kubeadm_init_master $master_vm_ipaddr $master_vm_name
 
 while read -r vm; do
@@ -534,7 +553,14 @@ while read -r vm; do
         $ssh_cmd "sed -i '/natOutgoing:/a \    disabled: true' /home/devuser/manifest/ippool.yaml"
         $ssh_cmd "sed -i '/IPPoolList/i \    natOutgoing: true' /home/devuser/manifest/ippool.yaml"
         $ssh_cmd /home/devuser/manifest/calicoctl apply -f /home/devuser/manifest/ippool.yaml
+    else
+        deploy_jool $vm_name $vm_ipaddr
     fi
+
+    scp $rootdir/calico devuser@$vm_ipaddr:/home/devuser/calico
+    $ssh_cmd sudo mv /opt/cni/bin/calico /opt/cni/bin/calico.orig
+    $ssh_cmd sudo cp /home/devuser/calico /opt/cni/bin/
+
     scp $rootdir/add-bridge.sh devuser@$vm_ipaddr:/home/devuser/
     scp $rootdir/del-bridge.sh devuser@$vm_ipaddr:/home/devuser/
     scp $rootdir/map_ns.sh devuser@$vm_ipaddr:/home/devuser/
