@@ -371,7 +371,7 @@ EOF
 
 
     cidr=${SERVICE_CIDR%/*}
-    $ssh_cmd sudo sed -i "s/10.96.0.10/${cidr}::a/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+    $ssh_cmd sudo sed -i "s/10.96.0.10/${cidr}a/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
     $ssh_cmd sudo systemctl daemon-reload
     #$ssh_cmd sudo systemctl restart kubelet.service
 
@@ -422,7 +422,7 @@ function kubeadm_join_minion {
     ssh_cmd="ssh -n devuser@$minion_ip"
 
     cidr=${SERVICE_CIDR%/*}
-    $ssh_cmd sudo sed -i "s/10.96.0.10/${cidr}::a/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+    $ssh_cmd sudo sed -i "s/10.96.0.10/${cidr}a/" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
     $ssh_cmd sudo systemctl daemon-reload
     #$ssh_cmd sudo systemctl restart kubelet.service
 
@@ -453,6 +453,14 @@ function deploy_helm {
         sleep 10
     done"
 
+    timeout 120 sh -c "while ! $ssh_cmd ping -W 1 -c 1 raw.githubusercontent.com >> /dev/null; do
+        sleep 1
+    done"
+
+    timeout 120 sh -c "while ! $ssh_cmd ping -W 1 -c 1 github.com >> /dev/null; do
+        sleep 1
+    done"
+
     $ssh_cmd 'sudo curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get > get_helm.sh'
     $ssh_cmd sudo chmod 700 get_helm.sh
     $ssh_cmd sudo ./get_helm.sh
@@ -461,7 +469,7 @@ function deploy_helm {
     $ssh_cmd sudo helm init --service-account helm
     
     echo "Waiting for tiller pod to go active"
-    timeout 360 sh -c "while ! $ssh_cmd 'sudo kubectl get pods -o wide -n kube-system | grep tiller | grep 1/1 | grep Running > /dev/null'; do
+    timeout 120 sh -c "while ! $ssh_cmd 'sudo kubectl get pods -o wide -n kube-system | grep tiller | grep 1/1 | grep Running > /dev/null'; do
         sleep 5
     done"
 
@@ -496,6 +504,18 @@ function deploy_bookinfo {
     $ssh_cmd chmod u+x ./deploy_bookinfo.sh
     $ssh_cmd sudo ./deploy_bookinfo.sh $master_ip
     echo "Now you can ssh devuser@$master_ip, and launch firefox with http://localhost:3000/dashboard/db/istio-dashboard"
+}
+
+function deploy_app {
+    master_ip=$1
+    master_name=$2
+    ssh_cmd="ssh -n devuser@$master_ip"
+    $ssh_cmd kubectl apply -f /home/devuser/manifest/nginx.yaml
+    $ssh_cmd kubectl apply -f /home/devuser/manifest/ingress.yaml
+    $ssh_cmd kubectl apply -f /home/devuser/manifest/istio-0.8.yaml
+    $ssh_cmd kubectl apply -f /home/devuser/manifest/bookinfo-old.yaml
+    $ssh_cmd kubectl apply -f /home/devuser/manifest/kube-dns.yaml
+    $ssh_cmd kubectl apply -f /home/devuser/manifest/sleep.yaml
 }
 
 function deploy_jool {
@@ -567,6 +587,8 @@ while read -r vm; do
     scp $rootdir/unmap_ns.sh devuser@$vm_ipaddr:/home/devuser/
     # $ssh_cmd /home/devuser/add-bridge.sh
 done < $hostfile
+
+#deploy_app $master_vm_ipaddr $master_vm_name
 
 if [[ $deploy_istio == 'istio' ]]; then
     deploy_istio $master_vm_ipaddr $master_vm_name

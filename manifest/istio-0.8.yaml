@@ -2193,7 +2193,7 @@ spec:
           secretName: istio-ingress-certs
           optional: true
       nodeSelector:
-        kubernetes.io/hostname: trial-minion1
+        kubernetes.io/hostname: new-minion1
       affinity:      
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:

@@ -1,0 +1,5 @@
+#./create_v6_cluster.sh new-cluster.txt enp9s0 no-istio calico
+cluster newstack newstack-ctxt newstack-admin us ca fd60:1000::/112 fd80:1111::/64 fd00:100::/112
+master new-master 192.168.122.20 192.168.122.1 fd80:1111::20 fd80:1111::1 any any 
+minion new-minion1 192.168.122.21 192.168.122.1 fd80:1111::21 fd80:1111::1 10.86.7.123/26 10.86.7.65
+minion new-minion2 192.168.122.22 192.168.122.1 fd80:1111::22 fd80:1111::1 10.86.7.125/26 10.86.7.65

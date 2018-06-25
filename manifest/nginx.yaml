@@ -286,7 +286,7 @@ spec:
           securityContext:
             runAsNonRoot: false
       nodeSelector:
-        kubernetes.io/hostname: trial-minion2
+        kubernetes.io/hostname: new-minion2
 
 ---
 apiVersion: v1
